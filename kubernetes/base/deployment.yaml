@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-platform
+  namespace: application
+  labels:
+    app.kubernetes.io/name: secure-platform
+    app.kubernetes.io/part-of: secure-aws-devsecops-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: secure-platform
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: secure-platform
+        app.kubernetes.io/part-of: secure-aws-devsecops-platform
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: secure-platform
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: secure-platform
+          # scripts/deploy-eks.ps1 renders this placeholder to an immutable
+          # ECR image reference before Kubernetes receives the manifest.
+          image: REPLACE_AT_DEPLOYMENT
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: AWS_REGION
+              value: us-west-2
+            # The deployment script configures the harmless secret name only
+            # after the Secret Manager value is created outside Terraform.
+            - name: APP_CONFIG_SECRET_ID
+              value: ""
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - name: writable-tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+      volumes:
+        - name: writable-tmp
+          emptyDir:
+            sizeLimit: 64Mi

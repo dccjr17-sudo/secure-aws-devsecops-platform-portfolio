@@ -1,0 +1,54 @@
+name: Publish trusted ECR image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: read
+
+concurrency:
+  group: publish-trusted-ecr-image
+  cancel-in-progress: false
+
+jobs:
+  security:
+    name: Required security gates
+    uses: ./.github/workflows/security-gates.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  publish:
+    name: Build and publish immutable image
+    needs: security
+    # The workflow must be deliberately started from main. AWS independently
+    # enforces the same branch restriction in the OIDC role trust policy.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-west-2
+          role-session-name: github-actions-ecr-publish
+
+      - name: Sign in to private ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and publish an immutable image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: sha-${{ github.sha }}
+        run: |
+          docker build --platform linux/amd64 --provenance=false --sbom=false --tag "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" ./app
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"

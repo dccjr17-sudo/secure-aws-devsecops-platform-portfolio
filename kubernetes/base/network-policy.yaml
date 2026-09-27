@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: secure-platform-restricted
+  namespace: application
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: secure-platform
+  policyTypes:
+    - Ingress
+    - Egress
+  # There is no public ingress path in this lab. Access for validation is via
+  # kubectl port-forward, not an internet-facing load balancer.
+  ingress: []
+  egress:
+    # Permit CoreDNS for name resolution.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # EKS Pod Identity injects an HTTP credential endpoint at this link-local
+    # address. It is separate from the application service-account token.
+    - to:
+        - ipBlock:
+            cidr: 169.254.170.23/32
+      ports:
+        - protocol: TCP
+          port: 80
+    # AWS public service addresses are not stable CIDRs. The workload needs
+    # only HTTPS through the NAT gateway to call Secrets Manager; a production
+    # environment should replace this with private endpoints and tighter rules.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

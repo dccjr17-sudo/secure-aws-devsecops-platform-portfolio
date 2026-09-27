@@ -1,0 +1,28 @@
+# Terraform working files and state
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+backend.hcl
+
+# Variable files may contain account-specific or sensitive values.
+*.tfvars
+!*.tfvars.example
+
+# Local secrets and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+
+# Evidence is private by default. Commit only deliberately sanitized artifacts.
+docs/evidence/private/

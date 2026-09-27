@@ -1,0 +1,8 @@
+# Copy this file to backend.hcl after applying ../bootstrap.
+# backend.hcl is intentionally ignored by Git because it is account-specific.
+
+bucket         = "REPLACE_WITH_BOOTSTRAP_STATE_BUCKET_OUTPUT"
+key            = "environments/dev/terraform.tfstate"
+region         = "us-west-2"
+dynamodb_table = "REPLACE_WITH_BOOTSTRAP_LOCK_TABLE_OUTPUT"
+encrypt        = true

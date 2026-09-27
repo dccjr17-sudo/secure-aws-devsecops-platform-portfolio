@@ -1,0 +1,8 @@
+# Do not commit your copied terraform.tfvars file.
+# Use a lowercase project slug that belongs to you. The account ID and region
+# make the final state-bucket name unique without putting the ID in this file.
+
+aws_region   = "us-west-2"
+aws_profile  = "devsecops-lab"
+project_name = "secure-aws-devsecops-jd"
+environment  = "shared"

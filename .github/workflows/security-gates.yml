@@ -1,0 +1,117 @@
+name: Security gates
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+# This reusable workflow deliberately has no AWS or OIDC permission. Only the
+# publish job may obtain a short-lived AWS session after these gates succeed.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the complete history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Block committed secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: Static application security scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      # Semgrep Community Edition, pinned to the image inspected during Phase 5.
+      image: semgrep/semgrep@sha256:51c9f53a4fce0d55e9abd08d7b96968654248a4b1122e77f20e0a49c0072446c
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v6
+
+      - name: Block static-analysis findings in application source
+        run: semgrep scan --config auto --error app/src
+
+  dependencies:
+    name: Python dependency vulnerability audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install the pinned audit tool
+        run: python -m pip install --disable-pip-version-check pip-audit==2.10.1
+
+      - name: Block known vulnerable dependencies
+        run: python -m pip_audit --requirement app/requirements.txt --strict
+
+  infrastructure:
+    name: Terraform security policy checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v6
+
+      - name: Enforce selected infrastructure policies
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/repo:ro" \
+            --workdir /repo \
+            bridgecrew/checkov@sha256:7407699a91a556849ae66e05c3753f58cf0ce922aa6ddfac7839aad4f390c016 \
+            --directory infrastructure \
+            --framework terraform \
+            --check CKV_AWS_41,CKV_AWS_51,CKV_AWS_60,CKV_AWS_61,CKV_AWS_130,CKV_AWS_163,CKV_AWS_274,CKV_AWS_393,CKV2_AWS_11 \
+            --compact \
+            --quiet
+
+  container:
+    name: Container vulnerability scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v6
+
+      - name: Build the application image locally
+        run: docker build --platform linux/amd64 --provenance=false --sbom=false --tag secure-aws-devsecops-app:security ./app
+
+      - name: Report high and critical image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: secure-aws-devsecops-app:security
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+      - name: Block critical image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: secure-aws-devsecops-app:security
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+          skip-setup-trivy: true

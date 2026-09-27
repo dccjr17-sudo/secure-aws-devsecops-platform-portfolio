@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: secure-platform
+  namespace: application
+  labels:
+    app.kubernetes.io/name: secure-platform
+    app.kubernetes.io/part-of: secure-aws-devsecops-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: secure-platform
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
